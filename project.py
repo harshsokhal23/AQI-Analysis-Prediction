@@ -8,108 +8,154 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 
-df = pd.read_csv("AQI-INDIA.csv")
+# loading the dataset
+data = pd.read_csv("AQI-INDIA.csv")
 
-df.columns = df.columns.str.lower().str.strip()
+# making column names clean and consistent
+data.columns = data.columns.str.lower().str.strip()
 
-df = df.replace("NA", np.nan)
+# replacing 'NA' values with proper NaN
+data = data.replace("NA", np.nan)
 
-df['pollutant_avg'] = pd.to_numeric(df['pollutant_avg'], errors='coerce')
+# converting pollutant values into numeric form
+data['pollutant_avg'] = pd.to_numeric(data['pollutant_avg'], errors='coerce')
 
-df = df.dropna(subset=['pollutant_avg'])
+# removing rows where pollutant data is missing
+data = data.dropna(subset=['pollutant_avg'])
 
-df_pivot = df.pivot_table(
+# reshaping data so each pollutant becomes a column
+pivot_data = data.pivot_table(
     index='city',
     columns='pollutant_id',
     values='pollutant_avg',
     aggfunc='mean'
 ).reset_index()
 
-df_pivot.columns = df_pivot.columns.str.lower()
+# again making sure column names are clean
+pivot_data.columns = pivot_data.columns.str.lower()
 
-required_cols = ['pm2.5', 'pm10', 'no2', 'so2', 'co']
-available_cols = [col for col in required_cols if col in df_pivot.columns]
+# selecting main pollutants we need
+pollutants = ['pm2.5', 'pm10', 'no2', 'so2', 'co']
+features = [col for col in pollutants if col in pivot_data.columns]
 
-if len(available_cols) > 0:
-    df_pivot['aqi'] = df_pivot[available_cols].mean(axis=1)
+# calculating AQI as average of available pollutants
+if len(features) > 0:
+    pivot_data['aqi'] = pivot_data[features].mean(axis=1)
 
-df_pivot = df_pivot.dropna(subset=['aqi'])
+# removing rows where AQI couldn't be calculated
+pivot_data = pivot_data.dropna(subset=['aqi'])
 
-df_pivot[available_cols] = df_pivot[available_cols].fillna(
-    df_pivot[available_cols].mean()
+# filling remaining missing values using column mean
+pivot_data[features] = pivot_data[features].fillna(
+    pivot_data[features].mean()
 )
 
-print(df_pivot.describe())
+# basic summary of dataset
+print(pivot_data.describe())
 
+# checking how AQI values are distributed
 plt.figure()
-plt.hist(df_pivot['aqi'], bins=20)
+plt.hist(pivot_data['aqi'], bins=20)
 plt.title("AQI Distribution")
 plt.xlabel("AQI")
-plt.ylabel("Frequency")
+plt.ylabel("Count")
 plt.show()
 
+# seeing relationship between pollutants
 plt.figure()
-sns.heatmap(df_pivot[available_cols + ['aqi']].corr(), annot=True)
-plt.title("Correlation Matrix")
+sns.heatmap(pivot_data[features + ['aqi']].corr(), annot=True)
+plt.title("Correlation Heatmap")
 plt.show()
 
-if 'pm2.5' in df_pivot.columns:
+# simple relation between PM2.5 and AQI
+if 'pm2.5' in pivot_data.columns:
     plt.figure()
-    plt.scatter(df_pivot['pm2.5'], df_pivot['aqi'])
+    plt.scatter(pivot_data['pm2.5'], pivot_data['aqi'])
     plt.xlabel("PM2.5")
     plt.ylabel("AQI")
     plt.title("PM2.5 vs AQI")
     plt.show()
 
+# checking if there are outliers in AQI
 plt.figure()
-sns.boxplot(x=df_pivot['aqi'])
-plt.title("AQI Outliers")
+sns.boxplot(x=pivot_data['aqi'])
+plt.title("AQI Spread")
 plt.show()
 
-X = df_pivot[available_cols]
-y = df_pivot['aqi']
+# separating input features and output
+X = pivot_data[features]
+y = pivot_data['aqi']
 
+# splitting data into training and testing parts
 x_train, x_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
-rf = RandomForestRegressor(n_estimators=100, random_state=42)
-rf.fit(x_train, y_train)
+# training Random Forest model
+rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+rf_model.fit(x_train, y_train)
 
-y_pred_rf = rf.predict(x_test)
+# making predictions using Random Forest
+rf_pred = rf_model.predict(x_test)
 
-lr = LinearRegression()
-lr.fit(x_train, y_train)
+# training Linear Regression model
+lr_model = LinearRegression()
+lr_model.fit(x_train, y_train)
 
-y_pred_lr = lr.predict(x_test)
+# predictions using Linear Regression
+lr_pred = lr_model.predict(x_test)
 
-rmse_rf = np.sqrt(mean_squared_error(y_test, y_pred_rf))
-r2_rf = r2_score(y_test, y_pred_rf)
+# evaluating Random Forest performance
+rf_rmse = np.sqrt(mean_squared_error(y_test, rf_pred))
+rf_r2 = r2_score(y_test, rf_pred)
 
-print("\nRandom Forest")
-print("RMSE:", rmse_rf)
-print("R2 Score:", r2_rf)
+print("\nRandom Forest Results")
+print("RMSE:", rf_rmse)
+print("R2 Score:", rf_r2)
 
-rmse_lr = np.sqrt(mean_squared_error(y_test, y_pred_lr))
-r2_lr = r2_score(y_test, y_pred_lr)
+# evaluating Linear Regression performance
+lr_rmse = np.sqrt(mean_squared_error(y_test, lr_pred))
+lr_r2 = r2_score(y_test, lr_pred)
 
-print("\nLinear Regression")
-print("RMSE:", rmse_lr)
-print("R2 Score:", r2_lr)
+print("\nLinear Regression Results")
+print("RMSE:", lr_rmse)
+print("R2 Score:", lr_r2)
 
+# comparing actual vs predicted values
 plt.figure()
-plt.scatter(y_test, y_pred_rf)
+plt.scatter(y_test, rf_pred)
+plt.plot([y_test.min(), y_test.max()],
+         [y_test.min(), y_test.max()])
 plt.xlabel("Actual AQI")
 plt.ylabel("Predicted AQI")
-plt.title("Random Forest Prediction")
+plt.title("Actual vs Predicted AQI (Random Forest)")
 plt.show()
 
-importance = rf.feature_importances_
+# creating a comparison dataframe
+comparison = pd.DataFrame({
+    'Actual': y_test.values,
+    'Predicted': rf_pred
+}).reset_index(drop=True)
 
-feature_importance = pd.DataFrame({
-    'Feature': available_cols,
+comparison = comparison.sort_values(by='Actual')
+
+# plotting trend comparison
+plt.figure()
+plt.plot(comparison['Actual'].values, label='Actual AQI')
+plt.plot(comparison['Predicted'].values, linestyle='dashed', label='Predicted AQI')
+plt.xlabel("Samples")
+plt.ylabel("AQI")
+plt.title("Actual vs Predicted Trend")
+plt.legend()
+plt.show()
+
+# checking which pollutant affects AQI the most
+importance = rf_model.feature_importances_
+
+importance_df = pd.DataFrame({
+    'Feature': features,
     'Importance': importance
 }).sort_values(by='Importance', ascending=False)
 
 print("\nFeature Importance:")
-print(feature_importance)
+print(importance_df)
